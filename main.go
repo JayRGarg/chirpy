@@ -15,8 +15,8 @@ func main() {
 	cfg := &apiConfig{}
 
 	mux.Handle("/app/", cfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
-	mux.Handle("GET /api/metrics", cfg.middlewareMetricsGet())
-	mux.Handle("POST /api/reset", cfg.middlewareMetricsReset())
+	mux.Handle("GET /admin/metrics", cfg.middlewareMetricsGet())
+	mux.Handle("POST /admin/reset", cfg.middlewareMetricsReset())
 	mux.HandleFunc("GET /api/healthz", handleHealthz)
 	server := http.Server{
 		Addr: 		":"+port,
@@ -39,9 +39,22 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 
 func (cfg *apiConfig) middlewareMetricsGet() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		metricsTemplate := `
+<html>
+  <body>
+    <h1>Welcome, Chirpy Admin</h1>
+    <p>Chirpy has been visited %d times!</p>
+  </body>
+</html>
+		`
+		responseBody := fmt.Sprintf(metricsTemplate, cfg.fileserverHits.Load())
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("Hits: %v", cfg.fileserverHits.Load())))
+		_, err := w.Write([]byte(responseBody))
+		if err != nil {
+			log.Printf("Error writing metrics response to client: %v", err)
+			return 
+		}
 	})
 }
 
@@ -50,7 +63,11 @@ func (cfg *apiConfig) middlewareMetricsReset() http.Handler {
 		cfg.fileserverHits.Store(0)
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("Hits reset to 0")))
+		_, err := w.Write([]byte(fmt.Sprintf("Hits reset to 0")))
+		if err != nil {
+			log.Printf("Error writing metrics reset status to client: %v", err)
+			return
+		}
 		
 	})
 }
@@ -58,5 +75,9 @@ func (cfg *apiConfig) middlewareMetricsReset() http.Handler {
 func handleHealthz(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	_, err := w.Write([]byte("OK"))
+	if err != nil {
+		log.Printf("Error writing health response to client: %v", err)
+		return
+	}
 }
